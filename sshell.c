@@ -64,7 +64,7 @@ void assign_token(struct parsed_token *p_tokens, char *p_tok){
         p_tokens->tok=p_tok;
 }
 
-char **parse_cmd(struct parsed_token *p_tokens, char *cmd){
+char **parse_cmd(char *cmd){ //struct parsed_token *p_tokens, 
         // memory allocation
         char *s_token;
         char **token = malloc(sizeof(char*) * TOKEN_MAX);
@@ -78,12 +78,12 @@ char **parse_cmd(struct parsed_token *p_tokens, char *cmd){
         int pointer = 0;
         //printf("debug1, %s\n",cmd);
         s_token = strtok(cmd, " \t\r\n"); // common delimiter - escape character
-        //struct parsed_token p_tokens;
+        //struct parsed_token s_tokens = *p_tokens;
         while(s_token != NULL){
                 // ---------------------
                 
                 //printf("debug, %s\n", s_token);
-                assign_token(p_tokens,s_token);
+                //assign_token(&s_tokens,s_token);
                 //printf("debug2, %s\n",p_tokens->tok);
                 
                 // ---------------------
@@ -145,7 +145,7 @@ int execute_cmd(char **args){
 int main(void) 
 {
         //char cmd[CMDLINE_MAX]; 
-        struct parsed_token *p_tokens;
+        //struct parsed_token *p_tokens = NULL;
         char *cmd; 
         char **token;
         
@@ -177,7 +177,7 @@ int main(void)
                 //retval = system(cmd);
                 
 
-                token = parse_cmd(p_tokens,cmd);
+                token = parse_cmd(cmd); //p_tokens
                 retval = execute_cmd(token); // system(cmd);
 
                 if(retval==0)
