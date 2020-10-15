@@ -5,11 +5,72 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-
+#include <fcntl.h>
+#include <dirent.h>
 #define CMDLINE_MAX 512
 #define PATH_MAX 4096 // Linux defines PATH_MAX 4096 bytes
 #define TOKEN_MAX 32
 
+int execute_cd(char * path) {
+    int ret;
+    ret = chdir(path);
+    if(ret != 0) {
+        perror("Error: cannot cd into directory");
+        ret = 1;
+    }
+    return ret;
+}
+int execute_sls() {
+    int ret = 0;
+    DIR *dirp;
+    struct dirent *dp;
+    dirp = opendir(".");
+    if(dirp == NULL) {
+        ret = 1;
+    }
+    while((dp = readdir(dirp)) != NULL) {
+        struct stat sb;
+        stat(dp->d_name, &sb);
+        fprintf(stdout, "%s (%lld bytes)\n", dp->d_name, sb.st_size);
+    }
+    return ret;
+}
+int execute_pwd() {
+    char cwd[PATH_MAX];
+    int ret = 0;
+    if(getcwd(cwd, sizeof(cwd)) != NULL) {
+        fprintf(stdout, "%s\n", cwd);
+        }
+    else {
+        ret = 1;
+        perror("Error: pwd failed");
+    }
+    return ret;   
+}
+
+int execute_builtin_commands(char** args, int cmd_num){
+    int ret;
+    switch(cmd_num){
+        case 0:
+            fprintf(stderr, "Bye...\n");
+            ret = 0;
+            break;
+        case 1:
+            ret = execute_pwd();
+            break;
+        case 2:
+            ret = execute_cd(args[1]);
+            break;
+        case 3:
+           ret = execute_sls();
+            break;
+        default:
+            ret = 0;
+            break;
+    }
+
+    return ret;
+}
 char *read_cmd(void){
         // memory allocation
         char *cmd = malloc(sizeof(char) * CMDLINE_MAX);
@@ -98,20 +159,34 @@ char **parse_cmd(char *cmd){ //struct parsed_token *p_tokens,
 }
 
 int execute_cmd(char **args){
+    int built_cmd = -1;
         if(args[0] == NULL)
                 return EXIT_FAILURE;
         // ---------------------------- Check whether it is Builtin command or not
         /* Builtin command */
-        // for(unsigned long i = 0; i < 4; i++) pwd, cd, exit, sls
-        // if (strcmp(args[0], builtin commands) == 0)
-        // char* built_cmds[4]
-        // built_cmds[0] = "exit" buildt_cmds[1] = "pwd"
-        // execute built in - return 
+        // execute built in - return (return status)
         if (!strcmp(args[0], "exit")) {  // string compare, equal == 0
                 fprintf(stderr, "Bye...\n");
                 free(args[0]);
+                fprintf(stderr, "+ completed 'exit' [%d]\n",
+                        0);
                 return EXIT_FAILURE;
-        } 
+        }
+        if(!strcmp(args[0], "pwd")) {
+            built_cmd = 1;
+        }
+        if(!strcmp(args[0], "cd")) {
+            built_cmd = 2;   
+        }
+        if(!strcmp(args[0], "sls")) {
+            built_cmd = 3; 
+        }
+        if(built_cmd != -1) {
+            return execute_builtin_commands(args,built_cmd);
+            built_cmd = -1;
+        }
+
+       
 
 
 
@@ -181,7 +256,7 @@ int main(void)
                 retval = execute_cmd(token); // system(cmd);
 
                 if(retval==0)
-                        fprintf(stderr, "Return status value for '%s': %d\n",
+                        fprintf(stderr, "+ completed '%s' [%d]\n",
                         cmd, retval);
                 else
                         break; 
