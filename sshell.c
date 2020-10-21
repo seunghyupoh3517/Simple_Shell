@@ -11,6 +11,7 @@
 #define PATH_MAX 4096 
 #define TOKEN_MAX 32
 #define PIPE_ARG_MAX 4
+#define MAX_ARGS 16
 
 // 1. Fix the bug in multiple pipes -> fprintf(stderr, concataenate the argumetns and exit values) - 10/20
 // 3. Running tester.sh & Test it on sshell.ref & Based on instruction - 10/21
@@ -26,12 +27,11 @@ struct commands{
 int execute_pwd() {
     char cwd[PATH_MAX];
     int ret_val = 0;
-    if(getcwd(cwd, sizeof(cwd)) != NULL) {
+    if(getcwd(cwd, sizeof(cwd)) != NULL)
         fprintf(stdout, "%s\n", cwd);
-    }
     else {
-        perror("Error: pwd failed");
-        ret_val = 1;
+        fprintf(stderr,"Error: pwd failed\n");
+        return 1;
     }
 
     return ret_val;   
@@ -41,8 +41,8 @@ int execute_cd(char * path) {
     int ret_val;
     ret_val = chdir(path);
     if(ret_val != 0) {
-        perror("Error: cannot cd into directory");
-        ret_val = 1;
+        fprintf(stderr, "Error: cannot cd into directory\n");
+        return 1;
     }
 
     return ret_val;
@@ -50,19 +50,27 @@ int execute_cd(char * path) {
 
 int execute_sls() {
     int ret_val = 0;
+    int depth = 0;
     DIR *dirp;
     struct dirent *dp;
     dirp = opendir(".");
+
     if(dirp == NULL) {
-        ret_val = 1;
+        fprintf(stderr, "Error: cannot open directory\n");
+        return 1;
     }
+    
     while((dp = readdir(dirp)) != NULL) {
         struct stat sb;
-
-        stat(dp->d_name, &sb);
-        fprintf(stdout, "%s (%lld bytes)\n", dp->d_name, sb.st_size);
+        if(dp->d_name[0] != '.') {
+                stat(dp->d_name, &sb);
+                fprintf(stdout, "%s (%lld bytes)\n", dp->d_name, sb.st_size);
+                depth++;
+        }
     }
-
+    if(depth == 0) 
+        fprintf(stdout,"empty (0 bytes)\n");
+    
     return ret_val;
 }
 
@@ -135,7 +143,6 @@ int execute_cmd(char **args){
         }
         if(built_cmd != -1) {
             return execute_builtin_commands(args,built_cmd);
-            built_cmd = -1;
         }
 
         pid_t pid;
@@ -154,7 +161,7 @@ int execute_cmd(char **args){
         } 
         else{ 
                 perror("fork");
-                exit(1);
+                exit(EXIT_FAILURE);
         }
 
         return EXIT_SUCCESS;
@@ -198,7 +205,18 @@ int output_redirection(char** args, int cmd_pos) {
         char** new_args = malloc(sizeof(char*) * TOKEN_MAX);
         char program_name[strlen(args[0])-2];
         int fd = 0, ret = 0;
-
+        if(!path || !new_args){
+                perror("ERROR: Malloc");
+                exit(EXIT_FAILURE);
+        }
+        if(args[cmd_pos+1] == NULL) {
+                fprintf(stderr,"Error: no output file\n");
+                return 2;
+        }
+        if(cmd_pos == 0) {
+                fprintf(stderr,"Error: missing command\n");
+                return 2;
+        }
         /*Open file with appropriate macro*/
         if(strlen(args[cmd_pos]) > 1)
                 fd = open(args[cmd_pos+1], O_RDWR|O_CREAT|O_APPEND, 0600);
@@ -206,18 +224,15 @@ int output_redirection(char** args, int cmd_pos) {
                 fd = open(args[cmd_pos+1], O_RDWR| O_CREAT | O_TRUNC, 0600);
 
         if (fd == -1) {
-                perror("Error: Cannot open file");
-
-                return 1;
+                fprintf(stderr, "Error: Cannot open output file\n");
+                return 2;
         }
 
         /* Redirect output & execute command */
         int std_out = dup(STDOUT_FILENO);
         if(dup2(fd, STDOUT_FILENO) == -1) {
-                perror("Error: Cannot redirect output");
-                ret = 1;
-
-                return ret;
+                fprintf(stderr,"Error: Cannot redirect output\n");
+                return 1;
         }
         if(strstr(args[0],"./") != NULL) { //Check if executable isnt a regular command and find the path to it
                 char* cmd = args[0];
@@ -288,19 +303,22 @@ int main(void)
 
                 /* Parse the commands */
                 token = parse_cmd(&command, cmd, &size);
-                
+                if(size > MAX_ARGS) {
+                        fprintf(stderr, "Error: too many process arguments\n");
+                        continue;
+                }
                 /* Check whether Pipe or Output Redirection or Regular Command  */
-                int cmd_pos;
+                int cmd_pos, pipe_pos = -1;;
                 char *pipe_dilimiter = "|";
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++){
                         if(!strcmp(token[cmd_pos],pipe_dilimiter)){
                                 pipe_count++;
-                                *command.arguments[cmd_pos] = '\0'; 
+                                *command.arguments[cmd_pos] = '\0';
+                                pipe_pos = cmd_pos;
                         }
                         if((pipe_count) && (cmd_pos = size - 1))
                                 *command.arguments[cmd_pos] = '\0';
                 } 
-
                 cmd_pos = 0;
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++) {
                         if(strstr(token[cmd_pos],">") != NULL) {
@@ -309,6 +327,10 @@ int main(void)
                         }
                 }
                 
+                if(pipe_count !=0 && output_red == 1 && cmd_pos < pipe_pos) {
+                        fprintf(stderr,"Error: mislocated ouput redirection\n");
+                        continue;
+                }
                 /* Execute commands corresponding to the types */
                 int retpipe[PIPE_ARG_MAX]; 
                 if(pipe_count)
@@ -334,8 +356,6 @@ int main(void)
                 }
                 else if(retval == -1) // Other way to break?
                         break;
-                else
-                        perror("Error: "); 
         }
 
         return EXIT_SUCCESS;
