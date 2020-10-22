@@ -423,6 +423,7 @@ int main(void)
                         break;
 
                 free(print_cmd);
+                free(token);
         }
         free(print_cmd);
         free(token);
