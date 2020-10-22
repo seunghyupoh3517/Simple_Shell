@@ -65,8 +65,9 @@ int execute_sls() {
     }
     if(depth == 0) 
         fprintf(stdout,"empty (0 bytes)\n");
-    
-    return ret_val;
+
+        closedir(dirp);
+        return ret_val;
 }
 
 int execute_builtin_commands(char** args, int cmd_num){
@@ -115,7 +116,7 @@ char **parse_cmd(struct commands *obj, char *cmd, int* size){
         token[pointer] = "\0"; //  "\0": string literal holding '\0' plus second one as a terminator
         obj->arguments = token;
         *size = size_tokens;
-
+ 
         return token;
 }
 
@@ -128,7 +129,8 @@ int execute_cmd(char **args){
         /* Built in commands */
         if (!strcmp(args[0], "exit")) {  
                 fprintf(stderr, "Bye...\n");
-                free(args);
+                if(args[2])
+                        free(args[0]);
                         
                 fprintf(stderr, "+ completed 'exit' [%d]\n",
                         0);
@@ -151,21 +153,27 @@ int execute_cmd(char **args){
         pid_t pid;
         pid = fork();
         if(pid==0){ 
-                if(execvp(args[0], args) == -1)
-                        return EXIT_FAILURE;
+                if(execvp(args[0], args) == -1) {
+                        fprintf(stderr, "Error: command not found\n");
+                        exit(EXIT_FAILURE);
+                }          
                 return EXIT_SUCCESS;
         } 
         else if(pid > 0){ 
                 int status;
                 waitpid(pid, &status, 0);
-                if(WEXITSTATUS(status) == -1)
+                if(WEXITSTATUS(status) == -1 || WEXITSTATUS(status) == 1) {
+                        
                         return EXIT_FAILURE;
+                }
+                        
                 return EXIT_SUCCESS;
         } 
         else{ 
                 perror("fork");
                 exit(EXIT_FAILURE);
         }
+
 
         return EXIT_SUCCESS;
 }
@@ -218,7 +226,6 @@ int *execute_pipe(char ***obj, int *size){
         pid_t pid;
         int fd[2];
         int fd_in = 0;
-
         while (*obj != NULL) 
         {
                 pipe(fd);
@@ -247,16 +254,16 @@ int *execute_pipe(char ***obj, int *size){
         return exit_status;
 }
 
-int output_redirection(char** args, int cmd_pos) {
+int output_redirection(char** args, int cmd_pos, int size) {
         char* path = malloc(sizeof(char) * PATH_MAX);
-        char** new_args = malloc(sizeof(char*) * TOKEN_MAX);
+        char** new_args = malloc(sizeof(char*) * size);
         char program_name[strlen(args[0])-2];
         int fd = 0, ret = 0;
         if(!path || !new_args){
                 perror("ERROR: Malloc");
                 exit(EXIT_FAILURE);
         }
-        if(args[cmd_pos+1] == NULL) {
+        if(args[cmd_pos+2] == NULL) {
                 fprintf(stderr,"Error: no output file\n");
                 return 2;
         }
@@ -281,7 +288,7 @@ int output_redirection(char** args, int cmd_pos) {
                 fprintf(stderr,"Error: Cannot redirect output\n");
                 return 1;
         }
-        if(strstr(args[0],"./") != NULL) { //Check if executable isnt a regular command and find the path to it
+        if(strstr(args[0],"./") != NULL) { //if not regular command, find path
                 char* cmd = args[0];
                 unsigned long j = 0;
                 for(unsigned long s = 2; s  < strlen(args[0]); s++) {
@@ -299,6 +306,7 @@ int output_redirection(char** args, int cmd_pos) {
                         new_args[j] = args[l];
                                 j++;
                 }
+                
                 ret = execute_cmd(new_args);
         }
         
@@ -313,13 +321,12 @@ int output_redirection(char** args, int cmd_pos) {
         return ret;
 }
 
-
-
 int main(void) 
 {
         /* Variable Initiation */
         char cmd[CMDLINE_MAX]; 
         char **token;
+        char *print_cmd;
         struct commands command;
         
         while (1) {
@@ -342,7 +349,7 @@ int main(void)
                         printf("%s", cmd);
                         fflush(stdout);
                 }
-                char *print_cmd = strdup(cmd);
+                print_cmd = strdup(cmd);
                 strtok(print_cmd, "\n");
 
                 /* Remove trailing newline from command line */
@@ -352,14 +359,10 @@ int main(void)
 
                 /* Parse the commands */
                 token = parse_cmd(&command, cmd, &size);
-<<<<<<< HEAD
-                      
-=======
                 if(size > MAX_ARGS) {
                         fprintf(stderr, "Error: too many process arguments\n");
                         continue;
                 }
->>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
                 /* Check whether Pipe or Output Redirection or Regular Command  */
                 int cmd_pos, pipe_pos = -1;;
                 char *pipe_dilimiter = "|";
@@ -369,44 +372,41 @@ int main(void)
                                 *command.arguments[cmd_pos] = '\0';
                                 pipe_pos = cmd_pos;
                         }
-<<<<<<< HEAD
-                }
-
-=======
                         if((pipe_count) && (cmd_pos = size - 1))
                                 *command.arguments[cmd_pos] = '\0';
                 } 
                 cmd_pos = 0;
->>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++) {
                         if(strstr(token[cmd_pos], ">") != NULL) {
                                 output_red = 1;
                                 break;
                         }
                 }
-<<<<<<< HEAD
-
-=======
-                
                 if(pipe_count !=0 && output_red == 1 && cmd_pos < pipe_pos) {
                         fprintf(stderr,"Error: mislocated ouput redirection\n");
                         continue;
                 }
->>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
+                if((pipe_pos == 0) || (pipe_pos+1) >= size){
+                        fprintf(stderr,"Error: missing command\n");
+                        continue;
+                }
+
                 /* Execute commands corresponding to the types */
                 int retpipe[PIPE_ARG_MAX]; 
                 if(pipe_count){
                         char **pipe_cmds[TOKEN_MAX];
+                        
                         helper_pipe(pipe_cmds, &command, size);
+                        
                         *retpipe = *execute_pipe(pipe_cmds, &size_exit);
                 }
                 if(output_red)
-                        retval = output_redirection(token,cmd_pos);
+                        retval = output_redirection(token,cmd_pos,size);
                 else
                         retval = execute_cmd(token);
                 
                 /* Decide action correspond to returned exit cod */
-                if((retval == 0) && (!pipe_count))
+                if((retval == 0 || retval == 1) && (!pipe_count) )
                         fprintf(stderr, "+ completed '%s' [%d]\n", 
                         print_cmd, retval);
                 else if(pipe_count){
@@ -421,7 +421,12 @@ int main(void)
                 }
                 else if(retval == -1)
                         break;
+
+                free(print_cmd);
         }
+        free(print_cmd);
+        free(token);
+
 
         return EXIT_SUCCESS;
 }

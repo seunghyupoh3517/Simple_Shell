@@ -235,7 +235,7 @@ TEST_CASES+=("pipe")
 ## Extra feature #1: stdout appending
 stdout_app_simple() {
     log "--- Running test case: ${FUNCNAME} ---"
-    run_test_case "echo toto > cat t\necho titi >> cat t\nexit\n"
+    run_test_case "echo toto > t\necho titi >> t\ncat t\nexit\n
     rm -f t
 
     local line_array=()
