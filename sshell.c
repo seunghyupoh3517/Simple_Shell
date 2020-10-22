@@ -20,10 +20,6 @@
 
 enum {exit_cmd = 0, pwd_cmd = 1, cd_cmd = 2, sls_cmd = 3};
 
-struct commands{
-        char **arguments;
-};
-
 int execute_pwd() {
     char cwd[PATH_MAX];
     int ret_val = 0;
@@ -94,9 +90,14 @@ int execute_builtin_commands(char** args, int cmd_num){
     return ret_val;
 }
 
+struct commands{
+        char **arguments;
+};
+
 char **parse_cmd(struct commands *obj, char *cmd, int* size){
         char *s_token;
         char **token = malloc(sizeof(char*) * TOKEN_MAX);
+        
         if(!token){
                 perror("ERROR: Malloc");
                 exit(EXIT_FAILURE);
@@ -112,11 +113,11 @@ char **parse_cmd(struct commands *obj, char *cmd, int* size){
                 size_tokens++;
         }
 
-        token[pointer] = NULL;
+        token[pointer] = "\0"; //  "\0": string literal holding '\0' plus second one as a terminator
         obj->arguments = token;
         *size = size_tokens;
 
-        return (obj->arguments);
+        return token;
 }
 
 int execute_cmd(char **args){
@@ -167,25 +168,68 @@ int execute_cmd(char **args){
         return EXIT_SUCCESS;
 }
 
-int *execute_pipe(struct commands *obj, int *size){
+void helper_pipe(char ***pipe, struct commands *obj, int size){
+        // char** arg1 = malloc(sizeof(char*) * TOKEN_MAX);
+        char *arg1[TOKEN_MAX];
+        char *arg2[TOKEN_MAX];
+        char *arg3[TOKEN_MAX];
+        char *arg4[TOKEN_MAX];
+        int divider = 0;
+        int arg_pos = 0;
+        int cmd_pos;
+        
+        for(cmd_pos = 0; cmd_pos < size; cmd_pos++){
+                if(divider == 0)
+                {
+                        arg1[arg_pos++] = obj->arguments[cmd_pos];
+                        arg_pos++;
+                }
+                if(divider == 1)
+                {
+                        arg2[arg_pos] = obj->arguments[cmd_pos];
+                        arg_pos++;
+                }
+
+                if(divider == 2)
+                {
+                        arg3[arg_pos] = obj->arguments[cmd_pos];
+                        arg_pos++;
+                }
+                if(divider == 3)
+                {
+                        arg4[arg_pos] = obj->arguments[cmd_pos];
+                        arg_pos++;
+                }   
+                if(obj->arguments[cmd_pos] == NULL){
+                        divider++;
+                        arg_pos = 0;
+                }
+        }
+        char **pipe_cmds[] = {arg1, arg2, arg3, arg4, NULL};
+        pipe = pipe_cmds;
+ }
+
+int *execute_pipe(char ***obj, int *size){
+        /* Collect child exit status */
+        static int exit_status[PIPE_ARG_MAX];
+        int exit_pos = 0;
         pid_t pid;
         int fd[2];
         int fd_in = 0;
-        static int exit_status[PIPE_ARG_MAX];
-        int exit_pos = 0;
 
-        while (*obj->arguments != NULL) 
+        while (*obj != NULL) 
         {
                 pipe(fd);
                 if ((pid = fork()) == -1){
                         exit(EXIT_FAILURE);
-                } 
-                else if (pid == 0){
+                }
+                
+                else if (pid == 0){ 
                         dup2(fd_in, 0); 
-                        if (*(obj->arguments + 1) != NULL)
+                        if (*(obj + 1) != NULL)
                                 dup2(fd[1], 1); 
                         close(fd[0]);
-                        exit_status[exit_pos]  = execvp((obj->arguments)[0], (char * const *) obj->arguments); 
+                        exit_status[exit_pos]  = execvp((*obj)[0], *obj); 
                         exit_pos++;
                         exit(EXIT_FAILURE);
                 } 
@@ -193,9 +237,10 @@ int *execute_pipe(struct commands *obj, int *size){
                         wait(NULL);
                         close(fd[1]);
                         fd_in = fd[0]; 
-                        obj->arguments++;
+                        obj++;
+                }
         }
-    }
+
         *size = exit_pos;
         return exit_status;
 }
@@ -266,6 +311,8 @@ int output_redirection(char** args, int cmd_pos) {
         return ret;
 }
 
+
+
 int main(void) 
 {
         /* Variable Initiation */
@@ -287,7 +334,7 @@ int main(void)
 
                 /* Get command line */
                 fgets(cmd, CMDLINE_MAX, stdin);
-
+                
                 /* Print command line if stdin is not provided by terminal */
                 if (!isatty(STDIN_FILENO)) {
                         printf("%s", cmd);
@@ -303,45 +350,61 @@ int main(void)
 
                 /* Parse the commands */
                 token = parse_cmd(&command, cmd, &size);
+<<<<<<< HEAD
+                      
+=======
                 if(size > MAX_ARGS) {
                         fprintf(stderr, "Error: too many process arguments\n");
                         continue;
                 }
+>>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
                 /* Check whether Pipe or Output Redirection or Regular Command  */
                 int cmd_pos, pipe_pos = -1;;
                 char *pipe_dilimiter = "|";
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++){
-                        if(!strcmp(token[cmd_pos],pipe_dilimiter)){
+                        if(!strcmp(token[cmd_pos], pipe_dilimiter)){
                                 pipe_count++;
                                 *command.arguments[cmd_pos] = '\0';
                                 pipe_pos = cmd_pos;
                         }
+<<<<<<< HEAD
+                }
+
+=======
                         if((pipe_count) && (cmd_pos = size - 1))
                                 *command.arguments[cmd_pos] = '\0';
                 } 
                 cmd_pos = 0;
+>>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++) {
-                        if(strstr(token[cmd_pos],">") != NULL) {
+                        if(strstr(token[cmd_pos], ">") != NULL) {
                                 output_red = 1;
                                 break;
                         }
                 }
+<<<<<<< HEAD
+
+=======
                 
                 if(pipe_count !=0 && output_red == 1 && cmd_pos < pipe_pos) {
                         fprintf(stderr,"Error: mislocated ouput redirection\n");
                         continue;
                 }
+>>>>>>> 1208b3d2ddbc0dd711e39df7d8c5f5b7e7dba7de
                 /* Execute commands corresponding to the types */
                 int retpipe[PIPE_ARG_MAX]; 
-                if(pipe_count)
-                        *retpipe = *execute_pipe(&command, &size_exit);
-                else if(output_red)
+                if(pipe_count){
+                        char **pipe_cmds[TOKEN_MAX];
+                        helper_pipe(pipe_cmds, &command, size);
+                        *retpipe = *execute_pipe(pipe_cmds, &size_exit);
+                }
+                if(output_red)
                         retval = output_redirection(token,cmd_pos);
                 else
                         retval = execute_cmd(token);
                 
                 /* Decide action correspond to returned exit cod */
-                if((!pipe_count) && (retval == 0) )
+                if((retval == 0) && (!pipe_count))
                         fprintf(stderr, "+ completed '%s' [%d]\n", 
                         print_cmd, retval);
                 else if(pipe_count){
@@ -354,7 +417,7 @@ int main(void)
                                 retpipe[i]);
                         fprintf(stderr, "\n");
                 }
-                else if(retval == -1) // Other way to break?
+                else if(retval == -1)
                         break;
         }
 
