@@ -12,7 +12,6 @@
 #define TOKEN_MAX 32
 #define PIPE_ARG_MAX 4
 #define MAX_ARGS 16
-
 // 1. Fix the bug in multiple pipes -> fprintf(stderr, concataenate the argumetns and exit values) - 10/20
 // 3. Running tester.sh & Test it on sshell.ref & Based on instruction - 10/21
 // 4. Clean the code according coding style - consistency , keep small sniphet of comments , check the coding style - 10/21
@@ -122,13 +121,15 @@ char **parse_cmd(struct commands *obj, char *cmd, int* size){
 
 int execute_cmd(char **args){
     int built_cmd = -1;
+        /* Error handling*/
         if(args[0] == NULL)
                 return EXIT_FAILURE;
 
+        /* Built in commands */
         if (!strcmp(args[0], "exit")) {  
                 fprintf(stderr, "Bye...\n");
-                if(args[2])
-                        free(args[0]);
+                free(args);
+                        
                 fprintf(stderr, "+ completed 'exit' [%d]\n",
                         0);
                 return -1;
@@ -146,6 +147,7 @@ int execute_cmd(char **args){
             return execute_builtin_commands(args,built_cmd);
         }
 
+        /* Regular commands */
         pid_t pid;
         pid = fork();
         if(pid==0){ 
