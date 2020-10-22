@@ -12,15 +12,14 @@
 #define TOKEN_MAX 32
 #define PIPE_ARG_MAX 4
 #define MAX_ARGS 16
-#define READ 0
-#define WRITE 1
+
 // 1. Fix the bug in multiple pipes -> fprintf(stderr, concataenate the argumetns and exit values) - 10/20
 // 3. Running tester.sh & Test it on sshell.ref & Based on instruction - 10/21
 // 4. Clean the code according coding style - consistency , keep small sniphet of comments , check the coding style - 10/21
 // 5. Finalize it - 10/22
 
 enum {exit_cmd = 0, pwd_cmd = 1, cd_cmd = 2, sls_cmd = 3};
-
+enum {read_fd = 0, write_fd = 1};
 
 int execute_pwd() {
     char cwd[PATH_MAX];
@@ -95,6 +94,7 @@ int execute_builtin_commands(char** args, int cmd_num){
 
 struct commands{
         char **arguments;
+        char ***args;
         char *arg1[TOKEN_MAX];
         char *arg2[TOKEN_MAX];
         char *arg3[TOKEN_MAX];
@@ -186,8 +186,107 @@ int execute_cmd(char **args){
         return EXIT_SUCCESS;
 }
 
-void helper_pipe(char ***pipe, char *piping_cmd, struct commands *pip){
+void helper_pipe(char ***pipe, char *piping_cmd){
         char *s_token;
+        char **token = malloc(sizeof(char*) * TOKEN_MAX);
+        char *arg1[TOKEN_MAX] = {NULL,};
+        char *arg2[TOKEN_MAX] = {NULL,};
+        char *arg3[TOKEN_MAX] = {NULL,};
+        char *arg4[TOKEN_MAX] = {NULL,};
+        if(!token){
+                perror("ERROR: Malloc");
+                exit(EXIT_FAILURE);
+        }
+        
+        int pointer = 0;
+        s_token = strtok(piping_cmd, " \t\r\n");
+        while(s_token != NULL){
+                token[pointer] = s_token;
+                pointer++;
+                s_token = strtok(NULL, " \t\r\n");
+        }
+        token[pointer++] = "\0"; //  "\0": string literal holding '\0' plus second one as a terminator
+
+
+        int nextIndex = 0;
+        for(int i=0;sizeof(token) / sizeof(int);i++){
+                if(token[i] != NULL){
+                                if(strcmp(token[i], "|") != 0){
+                                        arg1[i] = token[i];
+                                }else{
+                                        arg1[i] = "\0";
+                                        nextIndex = i+1;
+                                        break;
+                                }
+                }
+        }
+
+        int arg2Index = 0;
+        for(int i=nextIndex;sizeof(token) / sizeof(int);i++){
+                if(token[i] != NULL && (strcmp(token[i], "\0") != 0) ){
+                        if(strcmp(token[i], "|") != 0){
+                                        arg2[arg2Index] = token[i];
+                                        arg2Index++;
+                                }else{
+                                        arg2[arg2Index] = "\0";
+                                        nextIndex = i+1;
+                                        break;
+                                }
+                }else{
+                        nextIndex = i+1;
+                        break;
+                }
+        }
+        int arg3Index = 0;
+        for(int i=nextIndex;sizeof(token) / sizeof(int);i++){
+                if(token[i] != NULL && (strcmp(token[i], "\0") != 0) ){
+                                if(strcmp(token[i], "|") != 0){
+                                        arg3[arg3Index] = token[i];
+                                        arg3Index++;
+                                }else{
+                                        arg3[arg3Index] = "\0";
+                                        nextIndex = i+1;
+                                        break;
+                                }
+                }else{
+                        nextIndex = i+1;
+                        break;
+                }
+        }
+
+        int arg4Index = 0;
+        for(int i=nextIndex;sizeof(token) / sizeof(int);i++){
+                if(token[i] != NULL && (strcmp(token[i], "\0") != 0) ){
+                                if(strcmp(token[i], "|") != 0){
+                                        arg4[arg4Index] = token[i];
+                                        arg4Index++;
+                                }else{
+                                        arg4[arg4Index] = "\0";
+                                        nextIndex = i;
+                                        break;
+                                }
+                }else{
+                        nextIndex = i+1;
+                        break;
+                }
+        }
+
+        printf("%s\n", *arg1);
+        printf("%s\n", *arg2);
+        printf("%s\n", *arg3);
+        printf("%s\n", *arg4);
+
+        char **temp_pipe[] = {arg1, arg2, arg3, arg4, NULL};
+        pipe = temp_pipe;
+ }
+        /*
+        char *arg1[TOKEN_MAX] = {NULL,};
+        char *arg2[TOKEN_MAX] = {NULL,};
+        char *arg3[TOKEN_MAX] = {NULL,}; 
+        char *arg4[TOKEN_MAX] = {NULL,};
+
+        char *s_token;
+        char *p_token;
         char **token = malloc(sizeof(char*) * TOKEN_MAX);
         
         if(!token){
@@ -195,17 +294,48 @@ void helper_pipe(char ***pipe, char *piping_cmd, struct commands *pip){
                 exit(EXIT_FAILURE);
         }
 
-        int pointer = 0;
+        //int pointer = 0;
+
+        p_token = strstr(piping_cmd, "|");
+        s_token = strtok(piping_cmd, " \t\r\n");         
+        while((s_token != NULL) && !(p_token)){
+                *pip->arg1 = s_token;
+                s_token = strtok(NULL, " \t\r\n");
+        }       
+        pip->args[0] = &pip->arg1[0];
+
+        printf("DEBUG\n");
+        p_token = strstr(piping_cmd, "|");
         s_token = strtok(piping_cmd, " \t\r\n"); 
-        while(s_token != NULL){
-                token[pointer] = s_token;
-                pointer++;
+        while((s_token != NULL) && !(p_token)){
+                *pip->arg2 = s_token;
                 s_token = strtok(NULL, " \t\r\n");
         }
-        token[pointer++] = "\0"; //  "\0": string literal holding '\0' plus second one as a terminator
-        pip->arguments = token;
-        
+        pip->args[1] = &pip->arg2[0];
 
+        p_token = strstr(piping_cmd, "|");
+        s_token = strtok(piping_cmd, " \t\r\n"); 
+        while((s_token != NULL) && !(p_token)){
+                *pip->arg3 = s_token;
+                s_token = strtok(NULL, " \t\r\n");
+        }
+        pip->args[2] = &pip->arg3[0];
+
+        p_token = strstr(piping_cmd, "|");
+        s_token = strtok(piping_cmd, " \t\r\n"); 
+        while((s_token != NULL) && !(p_token)){
+                *pip->arg4 = s_token;
+                s_token = strtok(NULL, " \t\r\n");
+        }
+        pip->args[3] = &pip->arg4[0];
+        pip->args[4] = NULL;
+
+        pipe = pip->args;
+        //token[pointer++] = "\0"; //  "\0": string literal holding '\0' plus second one as a terminator
+        //pip->arguments = token;
+
+*/
+/*
         pointer = 0;
         char *p_token;
         char **temp_token = malloc(sizeof(char*) * TOKEN_MAX);
@@ -217,13 +347,13 @@ void helper_pipe(char ***pipe, char *piping_cmd, struct commands *pip){
                         *pip->arg1 = *temp_token;
                         check++;
                 } else if(check == 1){
-                        *pip->arg1 = *temp_token;
+                        *pip->arg2 = *temp_token;
                         check++;
                 } else if(check == 2){
-                        *pip->arg1 = *temp_token;
+                        *pip->arg3 = *temp_token;
                         check++;
                 } else if(check == 3){
-                        *pip->arg1 = *temp_token;
+                        *pip->arg4 = *temp_token;
                         check++;
                 }
                 pointer++;
@@ -233,44 +363,79 @@ void helper_pipe(char ***pipe, char *piping_cmd, struct commands *pip){
         
         char **temp_pipe[] = {pip->arg1, pip->arg2, pip->arg3, pip->arg4, NULL};
         pipe = temp_pipe;
- }
 
-int *execute_pipe(char ***obj, int *size){
+        free(token);
+        free(temp_token);
+        //free(temp_pipe);
+*/
+ 
+
+int *execute_pipe(char ***obj, int *size, int pipe_count){
         /* Collect child exit status */
         static int exit_status[PIPE_ARG_MAX];
         int exit_pos = 0;
         pid_t childpid;
         int fd[2];
-        int fd_in = 0;
-        while (*obj != NULL) 
-        {
+        int fdd = 0;
+        
+        /*
+        while (*obj->args != NULL) 
+        {       
+                switch(pipe_count){
+                        case 1:
+
+
+
+                                break;
+                        case 2:
+
+
+
+                                break;
+                        case 3: 
+
+
+
+                                break;
+
+                }
+        */
+        int i;
+        for(i = 0; i< pipe_count; i++){
                 pipe(fd);
                 /* fork() error occurred */
                 if ((childpid = fork()) == -1)
                 {
-                        perror("fork");
-                        exit_status[exit_pos] = EXIT_FAILURE; 
+                        fprintf(stderr, "Process Fork Failed");
+                        exit_status[exit_pos] = EXIT_FAILURE;
                         exit_pos++;
                 }
                 else if (childpid == 0)
                 { 
-                        dup2(fd_in, READ); 
+                        dup2(fdd, read_fd); 
                         if (*(obj + 1) != NULL)
-                                dup2(fd[1], WRITE); 
+                                dup2(fd[1], write_fd); 
                         close(fd[0]);
-                        exit_status[exit_pos]  = execvp((*obj)[0], *obj); 
+                        exit_status[exit_pos]  = execvp((*obj)[0],  *obj); 
                         exit_pos++;
                         exit(EXIT_FAILURE);
                 } 
                 else
-                {
+                {       
+                        //close(fd[0]);
+                        //int status;
+                        //waitpid(childpid, &status, 0);
                         wait(NULL);
                         close(fd[1]);
-                        fd_in = fd[0]; 
+                        fdd = fd[0]; 
                         obj++;
                 }
         }
+
+        close(fd[0]);
+        close(fd[1]);
         *size = exit_pos;
+
         return exit_status;
 }
 
@@ -416,13 +581,13 @@ int main(void)
 
                 /* Execute commands corresponding to the types */
                 int retpipe[PIPE_ARG_MAX]; 
-                struct commands pip;
+                //struct commands pip;
                 if(pipe_count){
                         char **pipe_cmds[TOKEN_MAX];
                         
-                        helper_pipe(pipe_cmds, piping_cmd, &pip);
+                        helper_pipe(pipe_cmds, piping_cmd);
                         
-                        *retpipe = *execute_pipe(pipe_cmds, &size_exit);
+                        *retpipe = *execute_pipe(pipe_cmds, &size_exit, pipe_count);
                 }
                 if(output_red)
                         retval = output_redirection(token,cmd_pos,size);
@@ -436,8 +601,8 @@ int main(void)
                 else if(pipe_count){
                         fprintf(stderr, "+ completed '%s' ",   
                         print_cmd);
-                        
                         int i;
+                        
                         for(i = 0; i < size_exit; i++)
                                 fprintf(stderr, "[%d]", 
                                 retpipe[i]);
