@@ -261,27 +261,27 @@ int execute_pipe(struct commands *obj, int child, int first, int last)
         /*  Child case */
 	if (pid == 0) {
                 /* First & Middle & Last processes */
-		if (first == 1 && last == 0 && child == 0){
+		if (child == 0 && first == 1){
 			dup2( fd[write_fd], STDOUT_FILENO );
 		} 
-                else if (first == 0 && last == 0 && child != 0) {
+                else if (child != 0 && first == 0) {
 			dup2(child, STDIN_FILENO);
 			dup2(fd[write_fd], STDOUT_FILENO);
 		} 
-                else 
+                else if(last != 0)
 			dup2( child, STDIN_FILENO );
 
                 /* Fail */
-                if (execvp( obj->pipe_args[0], obj->pipe_args) == -1){
+                if (execvp(obj->pipe_args[0], obj->pipe_args) == -1){
 			fprintf(stderr, "Error: command not found\n");
                         exit(EXIT_FAILURE);
                 } 
 	}
-        
+        /* Child done */
 	if (child != 0) 
 		close(child);
 	close(fd[write_fd]);
-        
+        /* Last process no longer to read*/
 	if (last == 1)
 		close(fd[read_fd]);
  
@@ -298,7 +298,7 @@ int pipe_helper(struct commands *args, char* cmd, int child, int first, int last
 	while(next != NULL) {
 		next[0] = '\0';
 		args->pipe_args[i] = cmd;
-		i++;
+
 		cmd = leadingspace(next + 1);
 		next = strchr(cmd, ' ');
 	}
