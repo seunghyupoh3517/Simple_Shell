@@ -135,7 +135,7 @@ int execute_sls() {
         struct stat sb;
         if(dp->d_name[0] != '.') {
                 stat(dp->d_name, &sb);
-                fprintf(stdout, "%s (%lld bytes)\n", dp->d_name, sb.st_size);
+                fprintf(stdout, "%s (%ld bytes)\n", dp->d_name, sb.st_size);
                 // ld
                 depth++;
         }
