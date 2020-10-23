@@ -18,6 +18,83 @@
 enum {exit_cmd = 0, pwd_cmd = 1, cd_cmd = 2, sls_cmd = 3};
 enum {read_fd = 0, write_fd = 1};
 
+static char* args[CMDLINE_MAX];
+int execute_pipe(int child, int first, int last)
+{       printf("DEGUG ex1\n");
+        pid_t pid;
+	int fd[2];
+	pipe(fd);	
+	pid = fork();
+
+        printf("DEGUG ex5\n");
+	if (pid == 0) {
+		if (first == 1 && last == 0 && child == 0){
+			dup2( fd[write_fd], STDOUT_FILENO );
+		} 
+                else if (first == 0 && last == 0 && child != 0) {
+			dup2(child, STDIN_FILENO);
+			dup2(fd[write_fd], STDOUT_FILENO);
+		} 
+                else {
+			dup2( child, STDIN_FILENO );
+		}
+                printf("DEGUG ex2\n");
+		if (execvp( args[0], args) == -1)
+			exit(EXIT_FAILURE); 
+	}
+        printf("DEGUG ex3\n");
+	if (child != 0) 
+		close(child);
+	close(fd[write_fd]);
+        printf("DEGUG ex4\n");
+	if (last == 1)
+		close(fd[read_fd]);
+ 
+	return fd[read_fd];
+}
+
+char* leadingspace(char* s)
+{
+	while (isspace(*s)) ++s;
+	return s;
+}
+
+ void split(char* cmd)
+{
+	cmd = leadingspace(cmd);
+        printf("%s\n", cmd);
+	char* next = strchr(cmd, ' ');
+        printf("%s\n", next);
+	int i = 0;
+ 	printf("DEGUG split1\n");
+	while(next != NULL) {
+		next[0] = '\0';
+		args[i] = cmd;
+		i++;
+		cmd = leadingspace(next + 1);
+		next = strchr(cmd, ' ');
+	}
+	if (cmd[0] != '\0') {
+		args[i] = cmd;
+		next = strchr(cmd, '\n');
+		i++; 
+	}
+        printf("DEGUG split2\n");
+	args[i] = NULL;
+}
+
+int exe(char* cmd, int child, int first, int last)
+{
+	split(cmd);
+        printf("DEGUG run1\n");
+	if (args[0] != NULL) {
+                printf("DEGUG  run2\n");
+		//cmd = leadingspace(cmd);
+		return execute_pipe(child, first, last);
+	}
+	return EXIT_SUCCESS;
+}
+
 int execute_pwd() {
     char cwd[PATH_MAX];
     int ret_val = 0;
@@ -51,7 +128,6 @@ int execute_sls() {
 
     if(dirp == NULL) {
         fprintf(stderr, "Error: cannot open directory\n");
-
         return 1;
     }
     
@@ -60,12 +136,13 @@ int execute_sls() {
         if(dp->d_name[0] != '.') {
                 stat(dp->d_name, &sb);
                 fprintf(stdout, "%s (%ld bytes)\n", dp->d_name, sb.st_size);
+                // ld
                 depth++;
         }
     }
-    if(depth == 0) 
+    if(depth == 0) {
         fprintf(stdout,"empty (0 bytes)\n");
-
+    }
         closedir(dirp);
         return ret_val;
 }
@@ -90,10 +167,8 @@ int execute_builtin_commands(char** args, int cmd_num){
     return ret_val;
 }
 
-/* Struct Data Structues to collect commands, arguments*/
 struct commands{
         char **arguments;
-        char *pipe_args[CMDLINE_MAX];
 };
 
 char **parse_cmd(struct commands *obj, char *cmd, int* size){
@@ -101,7 +176,7 @@ char **parse_cmd(struct commands *obj, char *cmd, int* size){
         char **token = malloc(sizeof(char*) * TOKEN_MAX);
         
         if(!token){
-                fprintf(stderr, "Error: Malloc\n");
+                perror("ERROR: Malloc");
                 exit(EXIT_FAILURE);
         }
 
@@ -110,6 +185,7 @@ char **parse_cmd(struct commands *obj, char *cmd, int* size){
         s_token = strtok(cmd, " \t\r\n"); 
         while(s_token != NULL){
                 token[pointer] = s_token;
+                
                 pointer++;
                 s_token = strtok(NULL, " \t\r\n");
                 size_tokens++;
@@ -164,23 +240,20 @@ int execute_cmd(char **args){
         else if(pid > 0){ 
                 int status;
                 waitpid(pid, &status, 0);
-                if(WEXITSTATUS(status) == -1 || WEXITSTATUS(status) == 1) {       
+                if(WEXITSTATUS(status) == -1 || WEXITSTATUS(status) == 1) {
+                        
                         return EXIT_FAILURE;
-                }            
+                }
+                        
                 return EXIT_SUCCESS;
         } 
         else{ 
-                fprintf(stderr, "Error: command not found\n");
+                perror("fork");
                 exit(EXIT_FAILURE);
         }
 
-        return EXIT_SUCCESS;
-}
 
-/* remove leading white space every iteration in pipe parsing */
-char* leadingspace(char* s){
-	while (isspace(*s)) ++s;
-	return s;
+        return EXIT_SUCCESS;
 }
 
 int output_redirection(char** args, int cmd_pos, int size) {
@@ -200,12 +273,12 @@ int output_redirection(char** args, int cmd_pos, int size) {
                 fprintf(stderr,"Error: missing command\n");
                 return 2;
         }
-
         /*Open file with appropriate macro*/
         if(strlen(args[cmd_pos]) > 1)
                 fd = open(args[cmd_pos+1], O_RDWR|O_CREAT|O_APPEND, 0600);
         else
                 fd = open(args[cmd_pos+1], O_RDWR| O_CREAT | O_TRUNC, 0600);
+
         if (fd == -1) {
                 fprintf(stderr, "Error: Cannot open output file\n");
                 return 2;
@@ -217,7 +290,6 @@ int output_redirection(char** args, int cmd_pos, int size) {
                 fprintf(stderr,"Error: Cannot redirect output\n");
                 return 1;
         }
-
         if(strstr(args[0],"./") != NULL) { //if not regular command, find path
                 char* cmd = args[0];
                 unsigned long j = 0;
@@ -229,7 +301,8 @@ int output_redirection(char** args, int cmd_pos, int size) {
                 realpath(program_name, path);
                 new_args[0] = path;
                 ret = execute_cmd(new_args);
-        } else {
+        }
+        else {
                 int j = 0;
                 for(int l = 0; l < cmd_pos; l++) {
                         new_args[j] = args[l];
@@ -248,96 +321,6 @@ int output_redirection(char** args, int cmd_pos, int size) {
         free(path);
 
         return ret;
-}
-
-/* Execute pipe fuction utilizing three variables to determine which process the program is currently at */
-int execute_pipe(struct commands *obj, int child, int first, int last)
-{       
-        pid_t pid;
-	int fd[2];
-	pipe(fd);	
-	pid = fork();
-
-        /*  Child case */
-	if (pid == 0) {
-                /* First & Middle & Last processes */
-		if (first == 1 && last == 0 && child == 0){
-			dup2( fd[write_fd], STDOUT_FILENO );
-		} 
-                else if (first == 0 && last == 0 && child != 0) {
-			dup2(child, STDIN_FILENO);
-			dup2(fd[write_fd], STDOUT_FILENO);
-		} 
-                else 
-			dup2( child, STDIN_FILENO );
-
-                /* Fail */
-                if (execvp( obj->pipe_args[0], obj->pipe_args) == -1){
-			fprintf(stderr, "Error: command not found\n");
-                        exit(EXIT_FAILURE);
-                } 
-	}
-        
-	if (child != 0) 
-		close(child);
-	close(fd[write_fd]);
-        
-	if (last == 1)
-		close(fd[read_fd]);
- 
-	return fd[read_fd];
-}
-
-/* execute_pipe helper: Parse the cmd with space - command & argument pairs */
-int pipe_helper(struct commands *args, char* cmd, int child, int first, int last)
-{
-        int i = 0;
-	cmd = leadingspace(cmd);
-	char* next = strchr(cmd, ' ');
-	
-	while(next != NULL) {
-		next[0] = '\0';
-		args->pipe_args[i] = cmd;
-		i++;
-		cmd = leadingspace(next + 1);
-		next = strchr(cmd, ' ');
-	}
-	if (cmd[0] != '\0') {
-		args->pipe_args[i] = cmd;
-		next = strchr(cmd, '\n');
-		i++; 
-	}
-
-        /* check next command */
-	args->pipe_args[i] = NULL;
-	if (args->pipe_args[0] != NULL) 
-		return execute_pipe(args, child, first, last);
-
-	return EXIT_SUCCESS;
-}
-
-/* execute_pipe helper's helper: Parse the cmd with pipe making into pairs of cmd and arguments, collect exit status */
-int *helper_helper(struct commands *args, char* cmd, int child, int first, int ret[]){
-        int *ret_val;
-        int checker = 0;
-        char *next = strchr(cmd, '|'); 
-
-        while(next!=NULL){
-                *next = '\0';
-                child  = pipe_helper(args, cmd, child, first, 0);
-                ret[checker] = child;
-                checker++;       
-                cmd = next + 1;
-                next = strchr(cmd, '|'); 
-                first = 0;
-        }
-        /* Last pair, last == 1, first == 0 */
-        child = pipe_helper(args , cmd, child, first, 1);
-        ret[checker] = child;
-        ret_val = ret;
-        wait(NULL);
-
-        return ret_val;
 }
 
 int main(void) 
@@ -393,6 +376,8 @@ int main(void)
                                 *command.arguments[cmd_pos] = '\0';
                                 pipe_pos = cmd_pos;
                         }
+                        if((pipe_count) && (cmd_pos = size - 1))
+                                *command.arguments[cmd_pos] = '\0';
                 } 
                 cmd_pos = 0;
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++) {
@@ -411,14 +396,30 @@ int main(void)
                 }
 
                 /* Execute commands corresponding to the types */
+                
                 int child = 0;
                 int first = 1;
+                int checker = 0;
                 int retpipe[PIPE_ARG_MAX]; 
-                int *checker;
-                struct commands pip;
+                //struct commands pip;
                 if(pipe_count){
                         char *p_cmd = cmd; 
-                        checker = helper_helper(&pip, p_cmd, child, first, retpipe);
+                        char *next = strchr(p_cmd, '|'); 
+
+                        while(next!=NULL && checker < pipe_count){
+                                *next = '\0';
+                                child  = exe(p_cmd, child, first, 0);
+                                retpipe[checker] = child;
+                                checker++;
+                                printf("DEGUG main\n");
+                                p_cmd = next + 1;
+			        next = strchr(cmd, '|'); 
+			        first = 0;
+		        }
+
+                        retpipe[checker] = child;
+		        child = exe(p_cmd, child, first, 1);
+		        wait(NULL);
                 }
                 else if(output_red)
                         retval = output_redirection(token,cmd_pos,size);
@@ -433,9 +434,10 @@ int main(void)
                         fprintf(stderr, "+ completed '%s' ",   
                         print_cmd);
                         int i;
-                        for(i = 0; i < pipe_count+1; i++)
+                        
+                        for(i = 0; i < pipe_count; i++)
                                 fprintf(stderr, "[%d]", 
-                                checker[i]);
+                                retpipe[i]);
                         fprintf(stderr, "\n");
                 }
                 else if(retval == -1)
