@@ -1,7 +1,7 @@
 # Simple_Shell
-UCD Fall 2020 ECS150(file:///Users/alexoh/Desktop/Alex/UC%20Davis/Fall%202020/ECS150/Projects/Simple-Shell/project_1.html)
+##### UCD Fall 2020 ECS150(file:///Users/alexoh/Desktop/Alex/UC%20Davis/Fall%202020/ECS150/Projects/Simple-Shell/project_1.html)
 
-## UNIX system callsby implementing simple shell, bsh, zsh like command line interpreter with main features of output redirection > , pipe |, and built-in commands.
+## UNIX system calls by implementing a simple shell, bsh, zsh like command line interpreter with main features of output redirection > , pipe |, and built-in commands.
 
 ### Read & Parse Commands
 Read the commands from Standard input into _char* cmd_ and return the string.
