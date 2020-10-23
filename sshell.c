@@ -18,76 +18,10 @@
 enum {exit_cmd = 0, pwd_cmd = 1, cd_cmd = 2, sls_cmd = 3};
 enum {read_fd = 0, write_fd = 1};
 
-int execute_pwd() {
-    char cwd[PATH_MAX];
-    int ret_val = 0;
-    if(getcwd(cwd, sizeof(cwd)) != NULL)
-        fprintf(stdout, "%s\n", cwd);
-    else {
-        fprintf(stderr,"Error: pwd failed\n");
-        return 1;
-    }
-
-    return ret_val;   
-}
-
-int execute_cd(char * path) {
-    int ret_val;
-    ret_val = chdir(path);
-    if(ret_val != 0) {
-        fprintf(stderr, "Error: cannot cd into directory\n");
-        return 1;
-    }
-
-    return ret_val;
-}
-
-int execute_sls() {
-    int ret_val = 0;
-    int depth = 0;
-    DIR *dirp;
-    struct dirent *dp;
-    dirp = opendir(".");
-
-    if(dirp == NULL) {
-        fprintf(stderr, "Error: cannot open directory\n");
-
-        return 1;
-    }
-    
-    while((dp = readdir(dirp)) != NULL) {
-        struct stat sb;
-        if(dp->d_name[0] != '.') {
-                stat(dp->d_name, &sb);
-                fprintf(stdout, "%s (%ld bytes)\n", dp->d_name, sb.st_size);
-                depth++;
-        }
-    }
-    if(depth == 0) 
-        fprintf(stdout,"empty (0 bytes)\n");
-
-        closedir(dirp);
-        return ret_val;
-}
-
-int execute_builtin_commands(char** args, int cmd_num){
-    int ret_val;
-    switch(cmd_num) {
-        case 1:
-            ret_val = execute_pwd();
-            break;
-        case 2:
-            ret_val = execute_cd(args[1]);
-            break;
-        case 3:
-            ret_val = execute_sls();
-            break;
-        default:
-            ret_val = 0;
-            break;
-    }
-
-    return ret_val;
+/* remove leading white space every iteration in pipe parsing */
+char* leadingspace(char* s){
+	while (isspace(*s)) ++s;
+	return s;
 }
 
 /* Struct Data Structues to collect commands, arguments*/
@@ -95,160 +29,6 @@ struct commands{
         char **arguments;
         char *pipe_args[CMDLINE_MAX];
 };
-
-char **parse_cmd(struct commands *obj, char *cmd, int* size){
-        char *s_token;
-        char **token = malloc(sizeof(char*) * TOKEN_MAX);
-        
-        if(!token){
-                fprintf(stderr, "Error: Malloc\n");
-                exit(EXIT_FAILURE);
-        }
-
-        int pointer = 0;
-        int size_tokens = 0;
-        s_token = strtok(cmd, " \t\r\n"); 
-        while(s_token != NULL){
-                token[pointer] = s_token;
-                pointer++;
-                s_token = strtok(NULL, " \t\r\n");
-                size_tokens++;
-        }
-
-        token[pointer] = NULL; //  "\0": string literal holding '\0' plus second one as a terminator
-        obj->arguments = token;
-        *size = size_tokens;
- 
-        return token;
-}
-
-int execute_cmd(char **args){
-    int built_cmd = -1;
-        /* Error handling*/
-        if(args[0] == NULL)
-                return EXIT_FAILURE;
-
-        /* Built in commands */
-        if (!strcmp(args[0], "exit")) {  
-                fprintf(stderr, "Bye...\n");
-                if(args[2])
-                        free(args[0]);
-                        
-                fprintf(stderr, "+ completed 'exit' [%d]\n",
-                        0);
-                return -1;
-        }
-        if(!strcmp(args[0], "pwd")) {
-            built_cmd = pwd_cmd;
-        }
-        if(!strcmp(args[0], "cd")) {
-            built_cmd = cd_cmd;   
-        }
-        if(!strcmp(args[0], "sls")) {
-            built_cmd = sls_cmd; 
-        }
-        if(built_cmd != -1) {
-            return execute_builtin_commands(args,built_cmd);
-        }
-
-        /* Regular commands */
-        pid_t pid;
-        pid = fork();
-        if(pid==0){ 
-                if(execvp(args[0], args) == -1) {
-                        fprintf(stderr, "Error: command not found\n");
-                        exit(EXIT_FAILURE);
-                }          
-                return EXIT_SUCCESS;
-        } 
-        else if(pid > 0){ 
-                int status;
-                waitpid(pid, &status, 0);
-                if(WEXITSTATUS(status) == -1 || WEXITSTATUS(status) == 1) {       
-                        return EXIT_FAILURE;
-                }            
-                return EXIT_SUCCESS;
-        } 
-        else{ 
-                fprintf(stderr, "Error: command not found\n");
-                exit(EXIT_FAILURE);
-        }
-
-        return EXIT_SUCCESS;
-}
-
-/* remove leading white space every iteration in pipe parsing */
-char* leadingspace(char* s){
-	while (isspace(*s)) ++s;
-	return s;
-}
-
-int output_redirection(char** args, int cmd_pos, int size) {
-        char* path = malloc(sizeof(char) * PATH_MAX);
-        char** new_args = malloc(sizeof(char*) * size);
-        char program_name[strlen(args[0])-2];
-        int fd = 0, ret = 0;
-        if(!path || !new_args){
-                perror("ERROR: Malloc");
-                exit(EXIT_FAILURE);
-        }
-        if(args[cmd_pos+1] == NULL) {
-                fprintf(stderr,"Error: no output file\n");
-                return 2;
-        }
-        if(cmd_pos == 0) {
-                fprintf(stderr,"Error: missing command\n");
-                return 2;
-        }
-
-        /*Open file with appropriate macro*/
-        if(strlen(args[cmd_pos]) > 1)
-                fd = open(args[cmd_pos+1], O_RDWR|O_CREAT|O_APPEND, 0600);
-        else
-                fd = open(args[cmd_pos+1], O_RDWR| O_CREAT | O_TRUNC, 0600);
-        if (fd == -1) {
-                fprintf(stderr, "Error: Cannot open output file\n");
-                return 2;
-        }
-
-        /* Redirect output & execute command */
-        int std_out = dup(STDOUT_FILENO);
-        if(dup2(fd, STDOUT_FILENO) == -1) {
-                fprintf(stderr,"Error: Cannot redirect output\n");
-                return 1;
-        }
-
-        if(strstr(args[0],"./") != NULL) { //if not regular command, find path
-                char* cmd = args[0];
-                unsigned long j = 0;
-                for(unsigned long s = 2; s  < strlen(args[0]); s++) {
-                        program_name[j] = cmd[s];
-                        j++;
-                }
-                program_name[j] = '\0';
-                realpath(program_name, path);
-                new_args[0] = path;
-                ret = execute_cmd(new_args);
-        } else {
-                int j = 0;
-                for(int l = 0; l < cmd_pos; l++) {
-                        new_args[j] = args[l];
-                                j++;
-                }
-                
-                ret = execute_cmd(new_args);
-        }
-        
-        /* return everything to normal and free memory*/
-        fflush(stdout); 
-        dup2(std_out, STDOUT_FILENO);
-        close(fd);
-        close(std_out);
-        free(new_args);
-        free(path);
-
-        return ret;
-}
 
 /* Execute pipe fuction utilizing three variables to determine which process the program is currently at */
 int execute_pipe(struct commands *obj, int child, int first, int last)
@@ -340,6 +120,233 @@ int *helper_helper(struct commands *args, char* cmd, int child, int first, int r
         return ret_val;
 }
 
+int execute_pwd() {
+    char cwd[PATH_MAX];
+    int ret_val = 0;
+    if(getcwd(cwd, sizeof(cwd)) != NULL)
+        fprintf(stdout, "%s\n", cwd);
+    else {
+        fprintf(stderr,"Error: pwd failed\n");
+        return 1;
+    }
+
+    return ret_val;   
+}
+
+int execute_cd(char * path) {
+    int ret_val;
+    ret_val = chdir(path);
+    if(ret_val != 0) {
+        fprintf(stderr, "Error: cannot cd into directory\n");
+        return 1;
+    }
+
+    return ret_val;
+}
+
+int execute_sls() {
+    int ret_val = 0;
+    int depth = 0;
+    DIR *dirp;
+    struct dirent *dp;
+    dirp = opendir(".");
+
+    if(dirp == NULL) {
+        fprintf(stderr, "Error: cannot open directory\n");
+        return 1;
+    }
+    
+    while((dp = readdir(dirp)) != NULL) {
+        struct stat sb;
+        if(dp->d_name[0] != '.') {
+                stat(dp->d_name, &sb);
+                fprintf(stdout, "%s (%ld bytes)\n", dp->d_name, sb.st_size);
+                depth++;
+        }
+    }
+    if(depth == 0) {
+        fprintf(stdout,"empty (0 bytes)\n");
+    }
+        closedir(dirp);
+        return ret_val;
+}
+
+int execute_builtin_commands(char** args, int cmd_num){
+    int ret_val;
+    switch(cmd_num) {
+        case 1:
+            ret_val = execute_pwd();
+            break;
+        case 2:
+            ret_val = execute_cd(args[1]);
+            break;
+        case 3:
+            ret_val = execute_sls();
+            break;
+        default:
+            ret_val = 0;
+            break;
+    }
+
+    return ret_val;
+}
+
+struct commands{
+        char **arguments;
+};
+
+char **parse_cmd(struct commands *obj, char *cmd, int* size){
+        char *s_token;
+        char **token = malloc(sizeof(char*) * TOKEN_MAX);
+        
+        if(!token){
+                perror("ERROR: Malloc");
+                exit(EXIT_FAILURE);
+        }
+
+        int pointer = 0;
+        int size_tokens = 0;
+        s_token = strtok(cmd, " \t\r\n"); 
+        while(s_token != NULL){
+                token[pointer] = s_token;
+                
+                pointer++;
+                s_token = strtok(NULL, " \t\r\n");
+                size_tokens++;
+        }
+
+        token[pointer] = NULL; //  "\0": string literal holding '\0' plus second one as a terminator
+        obj->arguments = token;
+        *size = size_tokens;
+ 
+        return token;
+}
+
+int execute_cmd(char **args){
+    int built_cmd = -1;
+        /* Error handling*/
+        if(args[0] == NULL)
+                return EXIT_FAILURE;
+
+        /* Built in commands */
+        if (!strcmp(args[0], "exit")) {  
+                fprintf(stderr, "Bye...\n");
+                if(args[2])
+                        free(args[0]);
+                        
+                fprintf(stderr, "+ completed 'exit' [%d]\n",
+                        0);
+                return -1;
+        }
+        if(!strcmp(args[0], "pwd")) {
+            built_cmd = pwd_cmd;
+        }
+        if(!strcmp(args[0], "cd")) {
+            built_cmd = cd_cmd;   
+        }
+        if(!strcmp(args[0], "sls")) {
+            built_cmd = sls_cmd; 
+        }
+        if(built_cmd != -1) {
+            return execute_builtin_commands(args,built_cmd);
+        }
+
+        /* Regular commands */
+        pid_t pid;
+        pid = fork();
+        if(pid==0){ 
+                if(execvp(args[0], args) == -1) {
+                        fprintf(stderr, "Error: command not found\n");
+                        exit(EXIT_FAILURE);
+                }          
+                return EXIT_SUCCESS;
+        } 
+        else if(pid > 0){ 
+                int status;
+                waitpid(pid, &status, 0);
+                if(WEXITSTATUS(status) == -1 || WEXITSTATUS(status) == 1) {
+                        
+                        return EXIT_FAILURE;
+                }
+                        
+                return EXIT_SUCCESS;
+        } 
+        else{ 
+                perror("fork");
+                exit(EXIT_FAILURE);
+        }
+
+
+        return EXIT_SUCCESS;
+}
+
+int output_redirection(char** args, int cmd_pos, int size) {
+        char* path = malloc(sizeof(char) * PATH_MAX);
+        char** new_args = malloc(sizeof(char*) * size);
+        char program_name[strlen(args[0])-2];
+        int fd = 0, ret = 0;
+        if(!path || !new_args){
+                perror("ERROR: Malloc");
+                exit(EXIT_FAILURE);
+        }
+        if(args[cmd_pos+1] == NULL) {
+                fprintf(stderr,"Error: no output file\n");
+                return 2;
+        }
+        if(cmd_pos == 0) {
+                fprintf(stderr,"Error: missing command\n");
+                return 2;
+        }
+        /*Open file with appropriate macro*/
+        if(strlen(args[cmd_pos]) > 1)
+                fd = open(args[cmd_pos+1], O_RDWR|O_CREAT|O_APPEND, 0600);
+        else
+                fd = open(args[cmd_pos+1], O_RDWR| O_CREAT | O_TRUNC, 0600);
+
+        if (fd == -1) {
+                fprintf(stderr, "Error: Cannot open output file\n");
+                return 2;
+        }
+
+        /* Redirect output & execute command */
+        int std_out = dup(STDOUT_FILENO);
+        if(dup2(fd, STDOUT_FILENO) == -1) {
+                fprintf(stderr,"Error: Cannot redirect output\n");
+                return 1;
+        }
+        if(strstr(args[0],"./") != NULL) { //if not regular command, find path
+                char* cmd = args[0];
+                unsigned long j = 0;
+                for(unsigned long s = 2; s  < strlen(args[0]); s++) {
+                        program_name[j] = cmd[s];
+                        j++;
+                }
+                program_name[j] = '\0';
+                realpath(program_name, path);
+                new_args[0] = path;
+                ret = execute_cmd(new_args);
+        }
+        else {
+                int j = 0;
+                for(int l = 0; l < cmd_pos; l++) {
+                        new_args[j] = args[l];
+                                j++;
+                }
+                
+                ret = execute_cmd(new_args);
+        }
+        
+        /* return everything to normal and free memory*/
+        fflush(stdout); 
+        dup2(std_out, STDOUT_FILENO);
+        close(fd);
+        close(std_out);
+        free(new_args);
+        free(path);
+
+        return ret;
+}
+
 int main(void) 
 {
         /* Variable Initiation */
@@ -393,6 +400,8 @@ int main(void)
                                 *command.arguments[cmd_pos] = '\0';
                                 pipe_pos = cmd_pos;
                         }
+                        if((pipe_count) && (cmd_pos = size - 1))
+                                *command.arguments[cmd_pos] = '\0';
                 } 
                 cmd_pos = 0;
                 for(cmd_pos = 0; cmd_pos < size; cmd_pos++) {
